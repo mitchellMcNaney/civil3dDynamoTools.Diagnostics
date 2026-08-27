@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>CivilDynamoTools.Diagnostics</RootNamespace>
+    <AssemblyName>CivilDynamoTools.Diagnostics</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- COM interop (dynamic + IDispatch late binding) is used to reach AeccParcel /
+         ParcelLoops. No Autodesk COM interop assembly is referenced; verify on the
+         Civil 3D 2026 machine that this still works under the .NET 8 host runtime. -->
+    <EnableComHosting>false</EnableComHosting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- AutoCAD managed API. Copy Local = false: these are supplied by the host
+         process (Civil 3D) at runtime and must not ship inside the package. -->
+    <Reference Include="AcCoreMgd">
+      <HintPath>$(AutoCAD2026Root)\AcCoreMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcDbMgd">
+      <HintPath>$(AutoCAD2026Root)\AcDbMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AcMgd">
+      <HintPath>$(AutoCAD2026Root)\AcMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Civil 3D managed API (Parcel, ParcelSegment, Site, CivilDocument, ...). -->
+    <Reference Include="AeccDbMgd">
+      <HintPath>$(Civil3DRoot)\AeccDbMgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

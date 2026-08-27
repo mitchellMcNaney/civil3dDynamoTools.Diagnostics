@@ -1,0 +1,15 @@
+{
+  "name": "CivilDynamoTools.Diagnostics",
+  "version": "0.1.0",
+  "description": "Diagnostic Dynamo node(s) for inspecting native Civil 3D parcel-loop topology (via COM) ahead of any geometry reconstruction. Exploratory prototype - not for production use.",
+  "group": "",
+  "keywords": ["civil3d", "parcel", "diagnostic", "topology"],
+  "author": "",
+  "license": "",
+  "engine": "dotnet",
+  "engine_version": "REPLACE_WITH_INSTALLED_DYNAMO_VERSION",
+  "host_dependencies": ["Civil3D"],
+  "dependencies": [],
+  "node_libraries": ["CivilDynamoTools.Diagnostics.dll"],
+  "contents": ""
+}
