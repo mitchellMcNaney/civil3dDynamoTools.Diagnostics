@@ -1,6 +1,7 @@
 using System.Collections;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.Civil.ApplicationServices;
 using Autodesk.Civil.DatabaseServices;
 using CivilDynamoTools.Diagnostics.Models;
 using CivilDynamoTools.Diagnostics.Topology;
@@ -16,7 +17,7 @@ namespace CivilDynamoTools.Diagnostics.Interop;
 /// (ParcelSegmentElementData), never a COM reference.
 ///
 /// NOT YET VERIFIED against the real Civil 3D 2026 API/COM surface:
-///   - Parcel.SiteId / Site.GetParcelIds() member names
+///   - CivilDocument.GetSiteIds() / Site.GetParcelIds() member names
 ///   - dynamic AcadObject / ParcelLoops behavior under the .NET 8 host runtime
 ///   - exact COM member names on AeccParcel / AeccParcelSegmentElement / AeccParcelSegment
 /// Failures here should be self-diagnosing (see the try/catch messages below) rather
@@ -37,19 +38,39 @@ internal sealed class ParcelTopologyReader
             ?? throw new InvalidOperationException(
                 $"ObjectId {selectedParcelId} did not resolve to an Autodesk.Civil.DatabaseServices.Parcel.");
 
-        ObjectId siteId = selectedParcel.SiteId;
-        if (siteId.IsNull)
+        // Parcel exposes no SiteId in the managed API, so find the owning Site by asking
+        // each Site in the drawing whether its parcel list contains the selected parcel.
+        CivilDocument civilDocument = CivilDocument.GetCivilDocument(db);
+
+        ObjectId siteId = ObjectId.Null;
+        ObjectIdCollection? siteParcelIds = null;
+        foreach (ObjectId candidateSiteId in civilDocument.GetSiteIds())
         {
-            throw new InvalidOperationException(
-                $"Parcel '{selectedParcel.Name}' ({selectedParcelId}) is not assigned to a Site; " +
-                "cannot enumerate sibling parcels to compute reference counts.");
+            var candidateSite = tr.GetObject(candidateSiteId, OpenMode.ForRead) as Site
+                ?? throw new InvalidOperationException(
+                    $"CivilDocument.GetSiteIds() returned ObjectId {candidateSiteId} that did not resolve to a Site.");
+
+            ObjectIdCollection candidateParcelIds = candidateSite.GetParcelIds();
+            if (!candidateParcelIds.Contains(selectedParcelId))
+                continue;
+
+            if (!siteId.IsNull)
+            {
+                throw new InvalidOperationException(
+                    $"Parcel '{selectedParcel.Name}' ({selectedParcelId}) is listed by more than one Site " +
+                    $"({siteId} and {candidateSiteId}); cannot determine which sibling parcels to use.");
+            }
+
+            siteId = candidateSiteId;
+            siteParcelIds = candidateParcelIds;
         }
 
-        var site = tr.GetObject(siteId, OpenMode.ForRead) as Site
-            ?? throw new InvalidOperationException(
-                $"Could not open Site {siteId} referenced by parcel '{selectedParcel.Name}'.");
-
-        ObjectIdCollection siteParcelIds = site.GetParcelIds();
+        if (siteId.IsNull || siteParcelIds is null)
+        {
+            throw new InvalidOperationException(
+                $"No Site in the drawing lists parcel '{selectedParcel.Name}' ({selectedParcelId}); " +
+                "cannot enumerate sibling parcels to compute reference counts.");
+        }
 
         // key -> distinct parcels that reference it
         var referencingParcels = new Dictionary<SegmentElementKey, HashSet<ObjectId>>();
