@@ -1,3 +1,4 @@
+using CivilDynamoTools.Diagnostics.Annotation;
 using CivilDynamoTools.Diagnostics.Geometry;
 using CivilDynamoTools.Diagnostics.Interop;
 using CivilDynamoTools.Diagnostics.Models;
@@ -78,8 +79,57 @@ public static class Parcel
         object parcel, double collinearToleranceDegrees = 1.0 / 3600.0, double linearTolerance = 1e-6)
     {
         var objectId = ParcelUnwrapper.ToParcelObjectId(parcel);
-        var reader = new ParcelTopologyReader();
-        IList<IList<ParcelSegmentElementData>> loops = reader.GetParcelLoops(objectId);
+        var (loops, results, options) = AnalyzeCorners(objectId, collinearToleranceDegrees, linearTolerance);
+
+        return results
+            .Select(result => CornersOutput.ToDictionary(loops[result.LoopIndex], result, options))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Creates DMS angle labels (MText) at the parcel's line-line corners, laid along each
+    /// corner's interior bisector starting just inside the vertex (flipped where needed so
+    /// text is never upside-down). Collinear junctions, curve-adjacent
+    /// vertices, vertices of invalid loops, and (optionally) right angles are skipped, each
+    /// with a reason in the output.
+    ///
+    /// Re-running replaces this parcel's labels: MText previously created by this node for
+    /// the same parcel (identified by XData) is erased first. Other MText is never touched.
+    /// </summary>
+    /// <param name="parcel">A Civil 3D parcel; same accepted shapes as SegmentReferenceCounts.</param>
+    /// <param name="textHeight">MText height in drawing units.</param>
+    /// <param name="offset">Minimum gap from the vertex to the near end of the text, in drawing units; widened automatically for narrow angles so the text clears both lines.</param>
+    /// <param name="layer">Layer for the labels (created if missing). Empty = current layer.</param>
+    /// <param name="skipRightAngles">Skip corners whose label would read 90°00'00" or 270°00'00".</param>
+    /// <param name="collinearToleranceDegrees">As for Corners.</param>
+    /// <param name="linearTolerance">As for Corners.</param>
+    public static Dictionary<string, object> LabelAngles(
+        object parcel,
+        double textHeight = 2.0,
+        double offset = 1.0,
+        string layer = "",
+        bool skipRightAngles = true,
+        double collinearToleranceDegrees = 1.0 / 3600.0,
+        double linearTolerance = 1e-6)
+    {
+        var objectId = ParcelUnwrapper.ToParcelObjectId(parcel);
+        var (_, results, _) = AnalyzeCorners(objectId, collinearToleranceDegrees, linearTolerance);
+
+        AngleLabelPlan plan = AngleLabelPlanner.Plan(results, new AngleLabelOptions
+        {
+            TextHeight = textHeight,
+            Offset = offset,
+            SkipRightAngles = skipRightAngles,
+        });
+
+        var written = new AngleLabelWriter().Write(objectId, plan.Labels, textHeight, layer);
+        return AngleLabelOutput.ToDictionary(written, plan, results);
+    }
+
+    private static (IList<IList<ParcelSegmentElementData>> Loops, IReadOnlyList<LoopCornerResult> Results, CornerOptions Options)
+        AnalyzeCorners(Autodesk.AutoCAD.DatabaseServices.ObjectId objectId, double collinearToleranceDegrees, double linearTolerance)
+    {
+        IList<IList<ParcelSegmentElementData>> loops = new ParcelTopologyReader().GetParcelLoops(objectId);
 
         var options = new CornerOptions
         {
@@ -90,8 +140,6 @@ public static class Parcel
             loops.Select(elements => elements.Select(LoopSegmentMapper.ToLoopSegment).ToList()).ToList(),
             options);
 
-        return results
-            .Select(result => CornersOutput.ToDictionary(loops[result.LoopIndex], result, options))
-            .ToList();
+        return (loops, results, options);
     }
 }

@@ -48,6 +48,8 @@ internal static class CornersOutput
             ["InteriorAngleDegrees"] = v.InteriorAngleDegrees,
             ["DeflectionDegrees"] = v.DeflectionDegrees,
             ["IsReflex"] = v.IsReflex,
+            ["BisectorX"] = v.InteriorBisector?.X,
+            ["BisectorY"] = v.InteriorBisector?.Y,
             ["IncomingElementIndex"] = v.IncomingSourceIndex,
             ["OutgoingElementIndex"] = v.OutgoingSourceIndex,
             ["IncomingKind"] = v.IncomingKind.ToString(),

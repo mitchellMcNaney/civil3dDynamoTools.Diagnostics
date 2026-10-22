@@ -97,7 +97,7 @@ public static class ParcelCornerAnalyzer
         {
             issues.Add("Another loop of this parcel could not be chained, so the outer boundary is unknown; interior angles not computed.");
             IReadOnlyList<LoopVertex> unsided = CornerAnalyzer.Analyze(loop, options)
-                .Select(v => v with { InteriorAngleDegrees = null })
+                .Select(v => v with { InteriorAngleDegrees = null, InteriorBisector = null })
                 .ToList();
             return new LoopCornerResult(index, order, role, unsided, issues) { IsValid = false };
         }
