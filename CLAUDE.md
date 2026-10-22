@@ -102,14 +102,43 @@ Key decisions:
   the selected parcel's own elements, each annotated with its computed
   `ReferenceCount` across the whole site.
 
-### Explicitly out of scope for this milestone
+### Next milestone: `Parcel.Corners` (in progress)
 
-Do not add, in this package, until the diagnostic result has been validated against
-real Civil 3D parcel data: angle calculation, 90-degree-vertex filtering, label
-rotation logic, curve-invalid-for-angle logic, MText/label creation, polyline/PolyCurve
-reconstruction, Dynamo `Line`/`Arc`/`PolyCurve` geometry objects, parcel geometry or
-style modification, the future geometry-QC node, or porting the legacy angle-labeling
-graph.
+The reference-count diagnostic has been validated in Dynamo (exterior=1 / shared=2
+holds). The next node, `Parcel.Corners`, is a general-purpose geometry node: retrieve
+parcel loops, identify corners, compute interior angles, return geometric/topology data.
+It keeps **every** vertex and classifies it (`Corner`, `CollinearJunction`,
+`CurveAdjacent`, `UnknownAdjacent`, `Degenerate`); curve-adjacent vertices are output
+but get no angle (for now).
+
+Done so far:
+- `src\CivilDynamoTools.Diagnostics.Geometry\` - Autodesk-free geometry layer
+  (`SegmentOrderAnalyzer`: joint/gap analysis + chaining by flipping, never reordering;
+  `CornerAnalyzer`: classification, signed deflection, interior angle). Unit-tested in
+  `tests\CivilDynamoTools.Diagnostics.Geometry.Tests\` (`dotnet test civil3dNodes.slnx`).
+- `Parcel.SegmentOrder` diagnostic node - reports whether COM `ParcelLoops` element
+  order is a continuous chain and which elements need flipping. Validated on three real
+  parcels (4 lines; 3 lines + curve; 5 lines with a split segment): all single-loop,
+  clockwise, connected as given, no reversals.
+- `Parcel.Corners` node, backed by `ParcelCornerAnalyzer`: validates each loop and flags
+  rather than repairs (`IsValid`, `Issues`). Multi-loop parcels: largest-area loop is
+  inferred Outer, others Hole - flagged as unverified, since no real multi-loop parcel
+  has been tested yet.
+
+`Parcel.Corners` validated in Dynamo (2026-10-21): angles match the plat and
+curve-adjacent vertices come through as null. Note: wire it from the parcel selection,
+not from `SegmentOrder`'s output (that yields a "DesignScript.Builtin.Dictionary" unwrap
+error).
+
+Pending: find a multi-loop parcel to check the outer/hole inference.
+
+### Explicitly out of scope
+
+Label placement, annotation filtering (e.g. which corners to label), label rotation,
+MText/Civil 3D label creation, polyline/PolyCurve reconstruction, Dynamo
+`Line`/`Arc`/`PolyCurve` geometry objects, parcel geometry or style modification, and
+porting the legacy angle-labeling graph. These are handled separately from the geometry
+node.
 
 ## Files created so far
 
@@ -118,7 +147,9 @@ C:\dev\civil3dNodes\
   Directory.Build.props
       Defines AutoCAD2026Root / Civil3DRoot MSBuild properties, overridable via
       AUTOCAD2026_ROOT / CIVIL3D_ROOT environment variables or -p: command-line
-      properties, so the real install paths never need to be hardcoded per machine.
+      properties. Default is this machine's install: H:\Program Files (x86)\AutoCAD 2026
+      (C3D\ and ACA\ subfolders hold AeccDbMgd.dll / AecBaseMgd.dll). C:\Program Files\
+      Autodesk only has Object Enablers here - never build against those.
 
   package\pkg.json
       Dynamo package manifest skeleton. `engine_version` is a literal placeholder

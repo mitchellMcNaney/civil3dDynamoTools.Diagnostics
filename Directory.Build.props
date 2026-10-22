@@ -11,7 +11,7 @@
   -->
   <PropertyGroup>
     <AutoCAD2026Root Condition="'$(AutoCAD2026Root)'==''">$(AUTOCAD2026_ROOT)</AutoCAD2026Root>
-    <AutoCAD2026Root Condition="'$(AutoCAD2026Root)'==''">C:\Program Files\Autodesk\AutoCAD 2026</AutoCAD2026Root>
+    <AutoCAD2026Root Condition="'$(AutoCAD2026Root)'==''">H:\Program Files (x86)\AutoCAD 2026</AutoCAD2026Root>
 
     <Civil3DRoot Condition="'$(Civil3DRoot)'==''">$(CIVIL3D_ROOT)</Civil3DRoot>
     <Civil3DRoot Condition="'$(Civil3DRoot)'==''">$(AutoCAD2026Root)\C3D</Civil3DRoot>

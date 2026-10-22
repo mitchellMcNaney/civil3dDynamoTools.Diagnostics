@@ -18,7 +18,9 @@ internal static class ComTypeInspector
 
         try
         {
-            ITypeInfo typeInfo = Marshal.GetTypeInfoFromObject(comObject);
+            // Marshal.GetTypeInfoFromObject is .NET Framework-only; ask IDispatch directly.
+            var dispatch = (IDispatchTypeInfo)comObject;
+            Marshal.ThrowExceptionForHR(dispatch.GetTypeInfo(0, 0, out ITypeInfo typeInfo));
             typeInfo.GetDocumentation(-1, out string name, out _, out _, out _);
             return string.IsNullOrEmpty(name) ? "Unknown" : name;
         }
@@ -26,5 +28,15 @@ internal static class ComTypeInspector
         {
             return $"Unknown (COM type inspection failed: {ex.Message})";
         }
+    }
+
+    // First two IDispatch vtable slots only (enough to reach GetTypeInfo); the slot order must match IDispatch.
+    [ComImport]
+    [Guid("00020400-0000-0000-C000-000000000046")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDispatchTypeInfo
+    {
+        [PreserveSig] int GetTypeInfoCount(out uint count);
+        [PreserveSig] int GetTypeInfo(uint typeInfoIndex, uint lcid, out ITypeInfo typeInfo);
     }
 }
