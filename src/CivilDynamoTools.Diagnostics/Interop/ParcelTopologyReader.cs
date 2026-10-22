@@ -83,79 +83,27 @@ internal sealed class ParcelTopologyReader
                 ?? throw new InvalidOperationException(
                     $"Site {siteId} contains ObjectId {parcelId} that did not resolve to a Parcel.");
 
-            dynamic aeccParcel;
-            try
+            foreach (ParcelSegmentElementData data in ReadLoops(parcel, parcelId).SelectMany(loop => loop))
             {
-                aeccParcel = parcel.AcadObject;
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException(
-                    $"Failed to obtain COM AcadObject for parcel '{parcel.Name}' ({parcelId}) via " +
-                    $"`parcel.AcadObject`: {ex.Message}", ex);
-            }
+                SegmentElementKey key = SegmentElementKey.Create(
+                    data.ParentSegmentIdentity, data.StartX, data.StartY, data.EndX, data.EndY,
+                    out bool reversed);
 
-            if (aeccParcel is null)
-            {
-                throw new InvalidOperationException(
-                    $"Parcel '{parcel.Name}' ({parcelId}) returned a null COM AcadObject.");
-            }
+                data.MatchingKey = key.ToString();
+                data.WasReversedRelativeToCanonical = reversed;
 
-            IEnumerable loops;
-            try
-            {
-                loops = (IEnumerable)aeccParcel.ParcelLoops;
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException(
-                    $"Failed to read ParcelLoops for parcel '{parcel.Name}' ({parcelId}): {ex.Message}", ex);
-            }
-
-            int loopIndex = 0;
-            foreach (dynamic loop in loops)
-            {
-                IEnumerable elements;
-                try
+                if (!referencingParcels.TryGetValue(key, out HashSet<ObjectId>? parcelSet))
                 {
-                    elements = (IEnumerable)loop;
+                    parcelSet = new HashSet<ObjectId>();
+                    referencingParcels[key] = parcelSet;
                 }
-                catch (Exception ex)
+                parcelSet.Add(parcelId);
+
+                if (parcelId == selectedParcelId)
                 {
-                    throw new InvalidOperationException(
-                        $"Parcel '{parcel.Name}' ({parcelId}) loop {loopIndex} was not enumerable " +
-                        $"as a collection of segment elements: {ex.Message}", ex);
+                    selectedParcelElements.Add(data);
+                    selectedParcelKeys.Add(key);
                 }
-
-                int elementIndex = 0;
-                foreach (dynamic element in elements)
-                {
-                    ParcelSegmentElementData data = ReadElement(parcel, loopIndex, elementIndex, element);
-
-                    SegmentElementKey key = SegmentElementKey.Create(
-                        data.ParentSegmentIdentity, data.StartX, data.StartY, data.EndX, data.EndY,
-                        out bool reversed);
-
-                    data.MatchingKey = key.ToString();
-                    data.WasReversedRelativeToCanonical = reversed;
-
-                    if (!referencingParcels.TryGetValue(key, out HashSet<ObjectId>? parcelSet))
-                    {
-                        parcelSet = new HashSet<ObjectId>();
-                        referencingParcels[key] = parcelSet;
-                    }
-                    parcelSet.Add(parcelId);
-
-                    if (parcelId == selectedParcelId)
-                    {
-                        selectedParcelElements.Add(data);
-                        selectedParcelKeys.Add(key);
-                    }
-
-                    elementIndex++;
-                }
-
-                loopIndex++;
             }
         }
 
@@ -165,6 +113,86 @@ internal sealed class ParcelTopologyReader
         }
 
         return selectedParcelElements;
+    }
+
+    /// <summary>
+    /// Reads only the given parcel's loops, preserving COM loop order and element order
+    /// exactly as ParcelLoops enumerates them. MatchingKey and ReferenceCount are left unset.
+    /// </summary>
+    public IList<IList<ParcelSegmentElementData>> GetParcelLoops(ObjectId parcelId)
+    {
+        Document? activeDocument = Application.DocumentManager.MdiActiveDocument
+            ?? throw new InvalidOperationException("No active Civil 3D document is available.");
+
+        using Transaction tr = activeDocument.Database.TransactionManager.StartTransaction();
+
+        var parcel = tr.GetObject(parcelId, OpenMode.ForRead) as Parcel
+            ?? throw new InvalidOperationException(
+                $"ObjectId {parcelId} did not resolve to an Autodesk.Civil.DatabaseServices.Parcel.");
+
+        return ReadLoops(parcel, parcelId);
+    }
+
+    private static IList<IList<ParcelSegmentElementData>> ReadLoops(Parcel parcel, ObjectId parcelId)
+    {
+        dynamic aeccParcel;
+        try
+        {
+            aeccParcel = parcel.AcadObject;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to obtain COM AcadObject for parcel '{parcel.Name}' ({parcelId}) via " +
+                $"`parcel.AcadObject`: {ex.Message}", ex);
+        }
+
+        if (aeccParcel is null)
+        {
+            throw new InvalidOperationException(
+                $"Parcel '{parcel.Name}' ({parcelId}) returned a null COM AcadObject.");
+        }
+
+        IEnumerable loops;
+        try
+        {
+            loops = (IEnumerable)aeccParcel.ParcelLoops;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to read ParcelLoops for parcel '{parcel.Name}' ({parcelId}): {ex.Message}", ex);
+        }
+
+        var result = new List<IList<ParcelSegmentElementData>>();
+        int loopIndex = 0;
+        foreach (dynamic loop in loops)
+        {
+            IEnumerable elements;
+            try
+            {
+                elements = (IEnumerable)loop;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"Parcel '{parcel.Name}' ({parcelId}) loop {loopIndex} was not enumerable " +
+                    $"as a collection of segment elements: {ex.Message}", ex);
+            }
+
+            var loopElements = new List<ParcelSegmentElementData>();
+            int elementIndex = 0;
+            foreach (dynamic element in elements)
+            {
+                loopElements.Add(ReadElement(parcel, loopIndex, elementIndex, element));
+                elementIndex++;
+            }
+
+            result.Add(loopElements);
+            loopIndex++;
+        }
+
+        return result;
     }
 
     private static ParcelSegmentElementData ReadElement(Parcel parcel, int loopIndex, int elementIndex, dynamic element)

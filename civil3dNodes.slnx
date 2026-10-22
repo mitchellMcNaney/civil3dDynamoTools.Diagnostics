@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CivilDynamoTools.Diagnostics.Geometry/CivilDynamoTools.Diagnostics.Geometry.csproj" />
+    <Project Path="src/CivilDynamoTools.Diagnostics/CivilDynamoTools.Diagnostics.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CivilDynamoTools.Diagnostics.Geometry.Tests/CivilDynamoTools.Diagnostics.Geometry.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -44,4 +44,9 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Pure geometry (no Autodesk refs). Copy Local = true: it ships next to this DLL. -->
+    <ProjectReference Include="..\CivilDynamoTools.Diagnostics.Geometry\CivilDynamoTools.Diagnostics.Geometry.csproj" />
+  </ItemGroup>
+
 </Project>

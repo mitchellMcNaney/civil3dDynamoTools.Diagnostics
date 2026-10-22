@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pure 2D geometry for parcel loops. Deliberately has NO Autodesk, COM, or Dynamo
+    references so it can be unit-tested on any machine without Civil 3D installed.
+    The Civil 3D-facing project (CivilDynamoTools.Diagnostics) maps COM data into the
+    plain input types here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>CivilDynamoTools.Diagnostics.Geometry</RootNamespace>
+    <AssemblyName>CivilDynamoTools.Diagnostics.Geometry</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
