@@ -132,7 +132,7 @@ error).
 
 Pending: find a multi-loop parcel to check the outer/hole inference.
 
-### Labeler 0.2: `Parcel.LabelAngles` (branch `Angle-labeler-0.2`, untested in Civil 3D)
+### Labeler 0.2: `Parcel.LabelAngles` (branch `Angle-labeler-0.2`, validated in Civil 3D 2026-10-21)
 
 User-chosen behavior: DMS text (whole seconds, rounding carries); label every line-line
 Corner except those that display as 90°00'00"/270°00'00"; text laid along the interior
