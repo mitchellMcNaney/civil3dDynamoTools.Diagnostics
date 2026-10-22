@@ -52,6 +52,12 @@ public sealed record LoopVertex(
     double? InteriorAngleDegrees,
     IReadOnlyList<string> Warnings)
 {
+    /// <summary>
+    /// Unit vector from the vertex into the region of interest, splitting the interior angle in
+    /// half. Present exactly when <see cref="InteriorAngleDegrees"/> is.
+    /// </summary>
+    public Point2? InteriorBisector { get; init; }
+
     public bool IsCorner => Classification == VertexClassification.Corner;
 
     public bool? IsReflex => InteriorAngleDegrees is double angle ? angle > 180.0 : null;
@@ -85,6 +91,7 @@ public static class CornerAnalyzer
         var warnings = new List<string>();
         double? deflection = null;
         double? interior = null;
+        Point2? bisector = null;
         VertexClassification classification;
 
         if (incoming.Kind == SegmentKind.Curve || outgoing.Kind == SegmentKind.Curve)
@@ -120,7 +127,10 @@ public static class CornerAnalyzer
             }
 
             if (orientationKnown)
+            {
                 interior = 180.0 - interiorSign * turn;
+                bisector = InteriorBisector(outgoing, interior.Value, interiorSign);
+            }
             else
                 warnings.Add("Loop orientation is unreliable (near-zero vertex-polygon area); interior angle not computed.");
         }
@@ -130,7 +140,22 @@ public static class CornerAnalyzer
             incoming.SourceIndex, outgoing.SourceIndex,
             incoming.Kind, outgoing.Kind,
             incoming.ChordLength, outgoing.ChordLength,
-            classification, deflection, interior, warnings);
+            classification, deflection, interior, warnings)
+        {
+            InteriorBisector = bisector,
+        };
+    }
+
+    /// <summary>
+    /// The region of interest lies on the <paramref name="interiorSign"/> side of the outgoing
+    /// line (+1 = left), and sweeping the outgoing direction that way by the interior angle
+    /// reaches the incoming line; half that sweep is the bisector.
+    /// </summary>
+    private static Point2 InteriorBisector(OrientedSegment outgoing, double interiorDegrees, int interiorSign)
+    {
+        double heading = Math.Atan2(outgoing.End.Y - outgoing.Start.Y, outgoing.End.X - outgoing.Start.X);
+        double angle = heading + interiorSign * interiorDegrees / 2.0 * Math.PI / 180.0;
+        return new Point2(Math.Cos(angle), Math.Sin(angle));
     }
 
     /// <summary>Signed change of direction from incoming to outgoing, in (-180, 180]; positive = left turn.</summary>

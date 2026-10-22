@@ -132,13 +132,25 @@ error).
 
 Pending: find a multi-loop parcel to check the outer/hole inference.
 
+### Labeler 0.2: `Parcel.LabelAngles` (branch `Angle-labeler-0.2`, validated in Civil 3D 2026-10-21)
+
+User-chosen behavior: DMS text (whole seconds, rounding carries); label every line-line
+Corner except those that display as 90°00'00"/270°00'00"; text laid along the interior
+bisector, vertex-side end at `offset` from the vertex (MiddleLeft, reading away), flipped
+to MiddleRight where reading away would be upside-down (rotation kept in (-90°, 90°]);
+gap auto-widened for narrow angles (0.75 × text height clear of each line). Model-space
+MText. Angles/exclusions validated in Civil 3D; rotated placement requested by user
+after seeing horizontal labels. Re-run
+erases MText tagged with XData app `CDT_DIAGNOSTICS` ("ParcelAngleLabel", parcel handle)
+for that parcel before creating new ones. Planning (`AngleLabelPlanner`, `AngleFormatter`)
+is in the geometry layer and unit-tested; `Annotation/AngleLabelWriter.cs` only writes.
+`Parcel.Corners` stays a pure geometry node.
+
 ### Explicitly out of scope
 
-Label placement, annotation filtering (e.g. which corners to label), label rotation,
-MText/Civil 3D label creation, polyline/PolyCurve reconstruction, Dynamo
-`Line`/`Arc`/`PolyCurve` geometry objects, parcel geometry or style modification, and
-porting the legacy angle-labeling graph. These are handled separately from the geometry
-node.
+Civil 3D label styles/objects (labels are plain MText), polyline/PolyCurve
+reconstruction, Dynamo `Line`/`Arc`/`PolyCurve` geometry objects, parcel geometry or
+style modification, and porting the legacy angle-labeling graph.
 
 ## Files created so far
 
