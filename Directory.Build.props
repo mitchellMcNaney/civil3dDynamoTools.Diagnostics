@@ -1,20 +1,22 @@
 <Project>
 
   <!--
-    Civil 3D 2026 / AutoCAD 2026 install locations, overridable per machine without
-    touching the .csproj:
-      - set environment variables AUTOCAD2026_ROOT / CIVIL3D_ROOT, or
-      - pass /p:AutoCAD2026Root=... /p:Civil3DRoot=... on the command line, or
+    AutoCAD / Civil 3D install to compile against. Defaults to 2026, the lowest supported
+    host (R25.1 runs .NET 10, like 2027); the build made against it also runs in Civil 3D
+    2027. Overridable
+    per machine without touching the .csproj:
+      - set environment variables AUTOCAD_ROOT / CIVIL3D_ROOT, or
+      - pass /p:AutoCADRoot=... /p:Civil3DRoot=... on the command line, or
       - edit the defaults below.
     Civil3DRoot must point at the real Civil 3D managed assemblies (the "...\C3D" folder
-    under the AutoCAD 2026 install), not an Object Enabler copy of the same DLL names.
+    under the AutoCAD install), not an Object Enabler copy of the same DLL names.
   -->
   <PropertyGroup>
-    <AutoCAD2026Root Condition="'$(AutoCAD2026Root)'==''">$(AUTOCAD2026_ROOT)</AutoCAD2026Root>
-    <AutoCAD2026Root Condition="'$(AutoCAD2026Root)'==''">H:\Program Files (x86)\AutoCAD 2026</AutoCAD2026Root>
+    <AutoCADRoot Condition="'$(AutoCADRoot)'==''">$(AUTOCAD_ROOT)</AutoCADRoot>
+    <AutoCADRoot Condition="'$(AutoCADRoot)'==''">H:\Program Files (x86)\AutoCAD 2026</AutoCADRoot>
 
     <Civil3DRoot Condition="'$(Civil3DRoot)'==''">$(CIVIL3D_ROOT)</Civil3DRoot>
-    <Civil3DRoot Condition="'$(Civil3DRoot)'==''">$(AutoCAD2026Root)\C3D</Civil3DRoot>
+    <Civil3DRoot Condition="'$(Civil3DRoot)'==''">$(AutoCADRoot)\C3D</Civil3DRoot>
   </PropertyGroup>
 
 </Project>

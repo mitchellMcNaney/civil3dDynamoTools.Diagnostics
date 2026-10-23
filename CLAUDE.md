@@ -179,6 +179,26 @@ exterior skip, T/crossing handling, square chamfers, text style, annotative).
 One transaction for the whole site; parcels that get no labels (e.g. ROW) still have old
 labels erased.
 
+### Host version and packaging (2026-10-22)
+
+**Home machine runs Civil 3D 2027** (`H:\Program Files (x86)\AutoCAD 2027`, .NET 10,
+Dynamo 4.1.2.5356); **work machine runs Civil 3D 2026**. Both are installed here. Civil 3D
+2026 R25.1.179 also hosts **.NET 10** (Dynamo 3.7.0.11777) - the older ".NET 8" notes in
+this file are wrong for that build, and its DLLs can't be referenced from net8. So: net10
+targets, compiled against the 2026 references (`Directory.Build.props`: `AutoCADRoot`, env
+`AUTOCAD_ROOT`), one package for both; pkg.json `engine_version` = 2026's Dynamo. The DLL
+built against 2026 references has been validated running in 2027. A work machine on an
+older 2026 build that still hosts .NET 8 would not load it.
+
+Dynamo's Publish wizard crashed Civil 3D (NullReferenceException in
+`Dynamo.UI.Views.PackageManagerWizard.SendUploadProgress` - a Dynamo bug). Instead,
+`package\Build-Package.ps1` builds Release and assembles `dist\<name>\` (pkg.json + bin\);
+load it via Dynamo Preferences > Package Settings > Node and Package Paths. Package name:
+"McNaney Civil3d Parcel Annotations". Only the main DLL is in `node_libraries`, so the
+geometry DLL's public types don't become nodes. Package 1.0.0 validated 2026-10-22: loads
+and runs on the work machine (Civil 3D 2026), transferred as a zip of the package folder
+and loaded from a Node and Package Path.
+
 ### Explicitly out of scope
 
 Civil 3D label styles/objects (labels are plain MText), polyline/PolyCurve
@@ -197,11 +217,9 @@ C:\dev\civil3dNodes\
       Autodesk only has Object Enablers here - never build against those.
 
   package\pkg.json
-      Dynamo package manifest skeleton. `engine_version` is a literal placeholder
-      string ("REPLACE_WITH_INSTALLED_DYNAMO_VERSION") - not yet filled in.
-      `bin\` under this folder does not exist yet; nothing has been built or copied
-      there. For fast iteration, prefer Dynamo's "Import Library..." pointed directly
-      at the built DLL under src\...\bin\ instead of loading this package folder.
+      Dynamo package manifest (filled in; see "Host version and packaging").
+      `package\Build-Package.ps1` assembles the loadable package under dist\.
+      For fast iteration, "Import Library..." on the DLL under src\...\bin\ still works.
 
   src\CivilDynamoTools.Diagnostics\
     CivilDynamoTools.Diagnostics.csproj
