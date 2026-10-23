@@ -190,6 +190,80 @@ public class AngleLabelPlannerTests
     }
 
     [Fact]
+    public void Corner_between_two_exterior_lines_is_skipped()
+    {
+        // Edges: 0 = (0,0)->(40,0), 1 = (40,0)->(0,30), 2 = (0,30)->(0,0).
+        var loop = Loops.Polygon((0, 0), (40, 0), (0, 30));
+        var exterior = new HashSet<LoopElementRef> { new(0, 0), new(0, 1) };
+
+        AngleLabelPlan plan = AngleLabelPlanner.Plan(ParcelCornerAnalyzer.Analyze(new[] { loop }), null, exterior);
+
+        Assert.Contains(plan.Skipped, s => s.Vertex == new Point2(40, 0) && s.Reason.Contains("exterior"));
+        Assert.Single(plan.Labels, l => l.Vertex == new Point2(0, 30)); // only one of its lines is exterior
+    }
+
+    [Fact]
+    public void Square_chamfer_ends_are_skipped_when_enabled()
+    {
+        // Square lot with its (20,20) corner cut by a 45° chamfer.
+        var loop = Loops.Polygon((0, 0), (20, 0), (20, 15), (15, 20), (0, 20));
+
+        AngleLabelPlan plan = Plan(loop, new AngleLabelOptions { SkipSquareChamfers = true });
+
+        Assert.Empty(plan.Labels);
+        Assert.Equal(2, plan.Skipped.Count(s => s.Reason.StartsWith("Square chamfer")));
+    }
+
+    [Fact]
+    public void Square_chamfer_ends_are_labeled_by_default()
+    {
+        var loop = Loops.Polygon((0, 0), (20, 0), (20, 15), (15, 20), (0, 20));
+
+        AngleLabelPlan plan = Plan(loop);
+
+        Assert.Equal(2, plan.Labels.Count);
+        Assert.All(plan.Labels, l => Assert.Equal("135°00'00\"", l.Text));
+    }
+
+    [Fact]
+    public void Lone_135_degree_corner_is_still_labeled()
+    {
+        // (10,0) is exactly 135°; its neighbors are 90° and ~149°.
+        var loop = Loops.Polygon((0, 0), (10, 0), (20, 10), (25, 30), (0, 30));
+
+        AngleLabelPlan plan = Plan(loop, new AngleLabelOptions { SkipSquareChamfers = true });
+
+        Assert.Contains(plan.Labels, l => l.Vertex == new Point2(10, 0) && l.Text == "135°00'00\"");
+    }
+
+    [Fact]
+    public void Skewed_chamfer_is_labeled()
+    {
+        // The (20,20) corner is 80° (its far side heads at 190°); a chamfer across it has 130° ends.
+        double far = 190 * Math.PI / 180;
+        var loop = Loops.Polygon(
+            (0, 0), (20, 0), (20, 15),
+            (20 + 5 * Math.Cos(far), 20 + 5 * Math.Sin(far)),
+            (20 + 20 * Math.Cos(far), 20 + 20 * Math.Sin(far)));
+
+        AngleLabelPlan plan = Plan(loop, new AngleLabelOptions { SkipSquareChamfers = true });
+
+        Assert.Equal(2, plan.Labels.Count(l => l.Text == "130°00'00\""));
+        Assert.DoesNotContain(plan.Skipped, s => s.Reason.StartsWith("Square chamfer"));
+    }
+
+    [Fact]
+    public void Exterior_elements_of_another_loop_do_not_match()
+    {
+        var loop = Loops.Polygon((0, 0), (40, 0), (0, 30));
+        var exterior = new HashSet<LoopElementRef> { new(1, 0), new(1, 1) };
+
+        AngleLabelPlan plan = AngleLabelPlanner.Plan(ParcelCornerAnalyzer.Analyze(new[] { loop }), null, exterior);
+
+        Assert.Equal(2, plan.Labels.Count);
+    }
+
+    [Fact]
     public void Invalid_loop_vertices_are_skipped()
     {
         var broken = Loops.Polygon((0, 0), (10, 0), (10, 10), (0, 10));

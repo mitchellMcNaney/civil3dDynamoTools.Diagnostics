@@ -15,12 +15,18 @@ namespace CivilDynamoTools.Diagnostics.Interop;
 /// </summary>
 internal static class ParcelUnwrapper
 {
-    public static ObjectId ToParcelObjectId(object? input)
+    public static ObjectId ToParcelObjectId(object? input) => ToObjectId(input, "parcel");
+
+    /// <summary>
+    /// Same unwrapping rules for any Civil 3D object (e.g. a Site). <paramref name="kind"/> only
+    /// names the expected input in error messages; the caller checks what the id resolves to.
+    /// </summary>
+    public static ObjectId ToObjectId(object? input, string kind)
     {
         switch (input)
         {
             case null:
-                throw new ArgumentNullException(nameof(input), "Parcel input was null.");
+                throw new ArgumentNullException(nameof(input), $"{char.ToUpperInvariant(kind[0])}{kind[1..]} input was null.");
             case ObjectId id:
                 return id;
             case DBObject dbObject:
@@ -44,9 +50,9 @@ internal static class ParcelUnwrapper
             .Select(p => $"{p.PropertyType.Name} {p.Name}"));
 
         throw new InvalidOperationException(
-            $"Could not unwrap parcel input of runtime type '{type.FullName}' into an " +
+            $"Could not unwrap {kind} input of runtime type '{type.FullName}' into an " +
             $"Autodesk.AutoCAD.DatabaseServices.ObjectId. Public properties found: [{members}]. " +
-            "Update ParcelUnwrapper.ToParcelObjectId to handle this wrapper shape.");
+            "Update ParcelUnwrapper.ToObjectId to handle this wrapper shape.");
     }
 
     private static bool TryGetPropertyValue<T>(object instance, Type type, string propertyName, out T value)

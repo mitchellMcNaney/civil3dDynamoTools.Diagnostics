@@ -3,9 +3,33 @@ using CivilDynamoTools.Diagnostics.Geometry;
 
 namespace CivilDynamoTools.Diagnostics.Models;
 
-/// <summary>Formats one parcel's label run as a Dynamo/Watch-friendly dictionary.</summary>
+/// <summary>Formats label runs as Dynamo/Watch-friendly dictionaries.</summary>
 internal static class AngleLabelOutput
 {
+    /// <summary>Site totals, the parcels treated as ROW, then each parcel's run (as <see cref="ToDictionary"/>, plus style and ROW match).</summary>
+    public static Dictionary<string, object> SiteToDictionary(
+        string siteName,
+        IReadOnlyList<(AngleLabelWriter.WriteResult Written, AngleLabelPlan Plan, IReadOnlyList<LoopCornerResult> Loops, string StyleName, string? RowMatch)> parcels) => new()
+    {
+        ["SiteName"] = siteName,
+        ["ParcelCount"] = parcels.Count,
+        ["LabelsCreated"] = parcels.Sum(p => p.Written.Written.Count),
+        ["PreviousLabelsDeleted"] = parcels.Sum(p => p.Written.DeletedCount),
+        ["RowParcels"] = parcels.Where(p => p.RowMatch is not null).Select(p => new Dictionary<string, object>
+        {
+            ["ParcelName"] = p.Written.ParcelName,
+            ["Reason"] = p.RowMatch!,
+        }).ToList(),
+        ["ParcelsWithInvalidLoops"] = parcels.Where(p => p.Loops.Any(l => !l.IsValid)).Select(p => p.Written.ParcelName).ToList(),
+        ["Parcels"] = parcels.Select(p =>
+        {
+            Dictionary<string, object> run = ToDictionary(p.Written, p.Plan, p.Loops);
+            run["StyleName"] = p.StyleName;
+            run["IsRow"] = p.RowMatch is not null;
+            return run;
+        }).ToList(),
+    };
+
     public static Dictionary<string, object> ToDictionary(
         AngleLabelWriter.WriteResult written, AngleLabelPlan plan, IReadOnlyList<LoopCornerResult> loops) => new()
     {
