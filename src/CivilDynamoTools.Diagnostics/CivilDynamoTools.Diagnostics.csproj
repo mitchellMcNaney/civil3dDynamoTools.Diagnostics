@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- Civil 3D 2026 (R25.1+) and 2027 both host .NET 10. Built against the 2026 references,
+         the lowest supported host; the same DLL runs in 2027 (validated). -->
     <TargetFramework>net10.0-windows</TargetFramework>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
@@ -12,8 +14,7 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
 
     <!-- COM interop (dynamic + IDispatch late binding) is used to reach AeccParcel /
-         ParcelLoops. No Autodesk COM interop assembly is referenced; verify on the
-         Civil 3D 2026 machine that this still works under the .NET 8 host runtime. -->
+         ParcelLoops. No Autodesk COM interop assembly is referenced. -->
     <EnableComHosting>false</EnableComHosting>
   </PropertyGroup>
 
@@ -21,15 +22,15 @@
     <!-- AutoCAD managed API. Copy Local = false: these are supplied by the host
          process (Civil 3D) at runtime and must not ship inside the package. -->
     <Reference Include="AcCoreMgd">
-      <HintPath>$(AutoCAD2026Root)\AcCoreMgd.dll</HintPath>
+      <HintPath>$(AutoCADRoot)\AcCoreMgd.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="AcDbMgd">
-      <HintPath>$(AutoCAD2026Root)\AcDbMgd.dll</HintPath>
+      <HintPath>$(AutoCADRoot)\AcDbMgd.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="AcMgd">
-      <HintPath>$(AutoCAD2026Root)\AcMgd.dll</HintPath>
+      <HintPath>$(AutoCADRoot)\AcMgd.dll</HintPath>
       <Private>false</Private>
     </Reference>
 
@@ -39,7 +40,7 @@
       <Private>false</Private>
     </Reference>
     <Reference Include="AecBaseMgd">
-      <HintPath>$(AutoCAD2026Root)\ACA\AecBaseMgd.dll</HintPath>
+      <HintPath>$(AutoCADRoot)\ACA\AecBaseMgd.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
