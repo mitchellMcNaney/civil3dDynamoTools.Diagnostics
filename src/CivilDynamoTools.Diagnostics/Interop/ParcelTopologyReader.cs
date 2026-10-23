@@ -3,6 +3,7 @@ using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.Civil.ApplicationServices;
 using Autodesk.Civil.DatabaseServices;
+using Autodesk.Civil.DatabaseServices.Styles;
 using CivilDynamoTools.Diagnostics.Models;
 using CivilDynamoTools.Diagnostics.Topology;
 
@@ -25,6 +26,12 @@ namespace CivilDynamoTools.Diagnostics.Interop;
 /// </summary>
 internal sealed class ParcelTopologyReader
 {
+    /// <summary>One parcel of a site, with ReferenceCount (across the whole site) set on every element.</summary>
+    public sealed record SiteParcel(
+        ObjectId ParcelId, string Name, string Handle, string StyleName, IList<IList<ParcelSegmentElementData>> Loops);
+
+    public sealed record SiteTopology(ObjectId SiteId, string SiteName, IReadOnlyList<SiteParcel> Parcels);
+
     public IList<ParcelSegmentElementData> GetSegmentReferenceCounts(ObjectId selectedParcelId)
     {
         Document? activeDocument = Application.DocumentManager.MdiActiveDocument
@@ -38,52 +45,90 @@ internal sealed class ParcelTopologyReader
             ?? throw new InvalidOperationException(
                 $"ObjectId {selectedParcelId} did not resolve to an Autodesk.Civil.DatabaseServices.Parcel.");
 
-        // Parcel exposes no SiteId in the managed API, so find the owning Site by asking
-        // each Site in the drawing whether its parcel list contains the selected parcel.
+        Site site = FindOwningSite(tr, db, selectedParcel, selectedParcelId);
+
+        return ReadSiteParcels(tr, site)
+            .Single(p => p.ParcelId == selectedParcelId)
+            .Loops.SelectMany(loop => loop)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Reads every parcel of a site. <paramref name="siteOrParcelId"/> may be the Site itself or
+    /// any parcel in it.
+    /// </summary>
+    public SiteTopology GetSiteTopology(ObjectId siteOrParcelId)
+    {
+        Document? activeDocument = Application.DocumentManager.MdiActiveDocument
+            ?? throw new InvalidOperationException("No active Civil 3D document is available.");
+
+        Database db = activeDocument.Database;
+
+        using Transaction tr = db.TransactionManager.StartTransaction();
+
+        Site site = tr.GetObject(siteOrParcelId, OpenMode.ForRead) switch
+        {
+            Site s => s,
+            Parcel p => FindOwningSite(tr, db, p, siteOrParcelId),
+            var other => throw new InvalidOperationException(
+                $"ObjectId {siteOrParcelId} resolved to {other?.GetType().FullName ?? "null"}, " +
+                "not an Autodesk.Civil.DatabaseServices.Site or Parcel."),
+        };
+
+        return new SiteTopology(site.ObjectId, site.Name, ReadSiteParcels(tr, site));
+    }
+
+    /// <summary>
+    /// Parcel exposes no SiteId in the managed API, so find the owning Site by asking
+    /// each Site in the drawing whether its parcel list contains the parcel.
+    /// </summary>
+    private static Site FindOwningSite(Transaction tr, Database db, Parcel parcel, ObjectId parcelId)
+    {
         CivilDocument civilDocument = CivilDocument.GetCivilDocument(db);
 
-        ObjectId siteId = ObjectId.Null;
-        ObjectIdCollection? siteParcelIds = null;
+        Site? owner = null;
         foreach (ObjectId candidateSiteId in civilDocument.GetSiteIds())
         {
             var candidateSite = tr.GetObject(candidateSiteId, OpenMode.ForRead) as Site
                 ?? throw new InvalidOperationException(
                     $"CivilDocument.GetSiteIds() returned ObjectId {candidateSiteId} that did not resolve to a Site.");
 
-            ObjectIdCollection candidateParcelIds = candidateSite.GetParcelIds();
-            if (!candidateParcelIds.Contains(selectedParcelId))
+            if (!candidateSite.GetParcelIds().Contains(parcelId))
                 continue;
 
-            if (!siteId.IsNull)
+            if (owner is not null)
             {
                 throw new InvalidOperationException(
-                    $"Parcel '{selectedParcel.Name}' ({selectedParcelId}) is listed by more than one Site " +
-                    $"({siteId} and {candidateSiteId}); cannot determine which sibling parcels to use.");
+                    $"Parcel '{parcel.Name}' ({parcelId}) is listed by more than one Site " +
+                    $"({owner.ObjectId} and {candidateSiteId}); cannot determine which sibling parcels to use.");
             }
 
-            siteId = candidateSiteId;
-            siteParcelIds = candidateParcelIds;
+            owner = candidateSite;
         }
 
-        if (siteId.IsNull || siteParcelIds is null)
-        {
-            throw new InvalidOperationException(
-                $"No Site in the drawing lists parcel '{selectedParcel.Name}' ({selectedParcelId}); " +
-                "cannot enumerate sibling parcels to compute reference counts.");
-        }
+        return owner ?? throw new InvalidOperationException(
+            $"No Site in the drawing lists parcel '{parcel.Name}' ({parcelId}); " +
+            "cannot enumerate sibling parcels to compute reference counts.");
+    }
 
+    /// <summary>Reads every parcel in the site and sets MatchingKey / ReferenceCount on all their elements.</summary>
+    private static IReadOnlyList<SiteParcel> ReadSiteParcels(Transaction tr, Site site)
+    {
         // key -> distinct parcels that reference it
         var referencingParcels = new Dictionary<SegmentElementKey, HashSet<ObjectId>>();
-        var selectedParcelElements = new List<ParcelSegmentElementData>();
-        var selectedParcelKeys = new List<SegmentElementKey>();
+        var keyed = new List<(ParcelSegmentElementData Data, SegmentElementKey Key)>();
+        var parcels = new List<SiteParcel>();
 
-        foreach (ObjectId parcelId in siteParcelIds)
+        foreach (ObjectId parcelId in site.GetParcelIds())
         {
             var parcel = tr.GetObject(parcelId, OpenMode.ForRead) as Parcel
                 ?? throw new InvalidOperationException(
-                    $"Site {siteId} contains ObjectId {parcelId} that did not resolve to a Parcel.");
+                    $"Site '{site.Name}' ({site.ObjectId}) contains ObjectId {parcelId} that did not resolve to a Parcel.");
 
-            foreach (ParcelSegmentElementData data in ReadLoops(parcel, parcelId).SelectMany(loop => loop))
+            IList<IList<ParcelSegmentElementData>> loops = ReadLoops(parcel, parcelId);
+            parcels.Add(new SiteParcel(parcelId, parcel.Name, parcel.Handle.ToString(), ReadStyleName(tr, parcel, parcelId), loops));
+
+            foreach (ParcelSegmentElementData data in loops.SelectMany(loop => loop))
             {
                 SegmentElementKey key = SegmentElementKey.Create(
                     data.ParentSegmentIdentity, data.StartX, data.StartY, data.EndX, data.EndY,
@@ -98,21 +143,27 @@ internal sealed class ParcelTopologyReader
                     referencingParcels[key] = parcelSet;
                 }
                 parcelSet.Add(parcelId);
-
-                if (parcelId == selectedParcelId)
-                {
-                    selectedParcelElements.Add(data);
-                    selectedParcelKeys.Add(key);
-                }
+                keyed.Add((data, key));
             }
         }
 
-        for (int i = 0; i < selectedParcelElements.Count; i++)
-        {
-            selectedParcelElements[i].ReferenceCount = referencingParcels[selectedParcelKeys[i]].Count;
-        }
+        foreach (var (data, key) in keyed)
+            data.ReferenceCount = referencingParcels[key].Count;
 
-        return selectedParcelElements;
+        return parcels;
+    }
+
+    private static string ReadStyleName(Transaction tr, Parcel parcel, ObjectId parcelId)
+    {
+        try
+        {
+            return ((StyleBase)tr.GetObject(parcel.StyleId, OpenMode.ForRead)).Name;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to read the style name of parcel '{parcel.Name}' ({parcelId}): {ex.Message}", ex);
+        }
     }
 
     /// <summary>

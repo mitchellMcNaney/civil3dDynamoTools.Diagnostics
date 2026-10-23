@@ -146,6 +146,39 @@ for that parcel before creating new ones. Planning (`AngleLabelPlanner`, `AngleF
 is in the geometry layer and unit-tested; `Annotation/AngleLabelWriter.cs` only writes.
 `Parcel.Corners` stays a pure geometry node.
 
+### Labeler 0.3: `Parcel.LabelSiteAngles` (branch `Angle-labeler-0.3`, validated in Civil 3D 2026-10-22)
+
+Labels every parcel in a site in one run (input: a site, or any parcel in it). Same rules
+as `LabelAngles`, plus two user-requested skips:
+- **ROW parcels get no labels.** No topology marks ROW, so parcels are matched by name or
+  style name against `rowTerms` (default `ROW;Right-of-Way;Right of Way`, whole-word,
+  case-insensitive; `RowParcelMatcher` in the geometry layer). Works on the user's drawings.
+- **Corners between two exterior boundary lines are skipped** (bearing/distance is already
+  on the plat boundary). Exterior = `ReferenceCount == 1`. Lot corners where a lot line
+  meets the boundary or ROW are still labeled. (Key matching held up in testing: ROW
+  frontage elements are split where lot lines meet them. If that ever fails, a lot's
+  frontage piece would count as 1 - fix with a geometric overlap test.)
+- **T-junctions: label only one corner.** Where two parcels' labeled corners share a vertex
+  and their true angles sum to 180° (within the collinear tolerance), the larger (obtuse)
+  is kept - user's choice - and the smaller is skipped naming it (`SupplementaryLabelFilter`).
+  At two straight lines crossing, this keeps the two obtuse corners (diagonal: one top, one
+  bottom) - matches what the user wants. Four independent lines meeting at a point: no pair
+  sums to 180°, all four labeled - also what the user wants.
+- **Square chamfers skipped** (`skipSquareChamfers`): a corner reading exactly 135°00'00"
+  whose neighboring corner in the same loop also reads 135°00'00" (chamfer from a 90° ROW
+  intersection). Lone 135° corners and skewed chamfers (e.g. 130/130) are still labeled.
+  Off by default in `AngleLabelOptions`, so single-parcel `LabelAngles` is unchanged.
+Both label nodes take `textStyle` (existing style name; empty = current; unknown name throws
+listing available styles - styles are never created).
+Labels are **annotative** (user request), with the current CANNOSCALE context only.
+`textHeight` is now plotted height (default 0.08); model height = textHeight / CANNOSCALE.Scale
+is used for placement clearance and set on the MText after enabling Annotative. Both nodes
+output AnnotationScale/ModelTextHeight.
+User validated all of the above in Civil 3D 2026-10-22 (site-wide labeling, ROW skip,
+exterior skip, T/crossing handling, square chamfers, text style, annotative).
+One transaction for the whole site; parcels that get no labels (e.g. ROW) still have old
+labels erased.
+
 ### Explicitly out of scope
 
 Civil 3D label styles/objects (labels are plain MText), polyline/PolyCurve

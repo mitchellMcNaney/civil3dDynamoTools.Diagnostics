@@ -97,40 +97,147 @@ public static class Parcel
     /// the same parcel (identified by XData) is erased first. Other MText is never touched.
     /// </summary>
     /// <param name="parcel">A Civil 3D parcel; same accepted shapes as SegmentReferenceCounts.</param>
-    /// <param name="textHeight">MText height in drawing units.</param>
+    /// <param name="textHeight">Plotted (paper) text height. Labels are annotative MText at the drawing's current annotation scale, so the model height is this divided by that scale.</param>
     /// <param name="offset">Minimum gap from the vertex to the near end of the text, in drawing units; widened automatically for narrow angles so the text clears both lines.</param>
     /// <param name="layer">Layer for the labels (created if missing). Empty = current layer.</param>
+    /// <param name="textStyle">Name of an existing text style for the labels. Empty = current text style. An unknown name fails, listing the available styles.</param>
     /// <param name="skipRightAngles">Skip corners whose label would read 90°00'00" or 270°00'00".</param>
     /// <param name="collinearToleranceDegrees">As for Corners.</param>
     /// <param name="linearTolerance">As for Corners.</param>
     public static Dictionary<string, object> LabelAngles(
         object parcel,
-        double textHeight = 2.0,
+        double textHeight = 0.08,
         double offset = 1.0,
         string layer = "",
+        string textStyle = "",
         bool skipRightAngles = true,
         double collinearToleranceDegrees = 1.0 / 3600.0,
         double linearTolerance = 1e-6)
     {
         var objectId = ParcelUnwrapper.ToParcelObjectId(parcel);
         var (_, results, _) = AnalyzeCorners(objectId, collinearToleranceDegrees, linearTolerance);
+        var (scaleName, modelTextHeight) = ModelTextHeight(textHeight);
 
         AngleLabelPlan plan = AngleLabelPlanner.Plan(results, new AngleLabelOptions
         {
-            TextHeight = textHeight,
+            TextHeight = modelTextHeight,
             Offset = offset,
             SkipRightAngles = skipRightAngles,
         });
 
-        var written = new AngleLabelWriter().Write(objectId, plan.Labels, textHeight, layer);
-        return AngleLabelOutput.ToDictionary(written, plan, results);
+        var written = new AngleLabelWriter().Write(objectId, plan.Labels, modelTextHeight, layer, textStyle);
+        Dictionary<string, object> output = AngleLabelOutput.ToDictionary(written, plan, results);
+        output["AnnotationScale"] = scaleName;
+        output["ModelTextHeight"] = modelTextHeight;
+        return output;
     }
+
+    /// <summary>
+    /// LabelAngles for every parcel in a site, in one run. On top of LabelAngles' rules:
+    /// ROW parcels (matched by name or style name) get no labels, and corners whose two lines
+    /// are both on the site's exterior boundary are skipped, since the boundary's bearings
+    /// and distances already define them. An element is exterior when only one parcel in
+    /// the site references it (see SegmentReferenceCounts). Where a lot line meets a straight
+    /// line, the two corners at that vertex sum to 180°, so only the larger is labeled.
+    ///
+    /// Re-running replaces labels for every parcel in the site, including erasing any old
+    /// labels on parcels that now get none (e.g. ROW parcels labeled by an earlier run).
+    /// </summary>
+    /// <param name="siteOrParcel">A Civil 3D site, or any parcel in it.</param>
+    /// <param name="textHeight">As for LabelAngles.</param>
+    /// <param name="offset">As for LabelAngles.</param>
+    /// <param name="layer">As for LabelAngles.</param>
+    /// <param name="textStyle">As for LabelAngles.</param>
+    /// <param name="skipRightAngles">As for LabelAngles.</param>
+    /// <param name="skipExteriorCorners">Skip corners where both lines are on the site's exterior boundary.</param>
+    /// <param name="skipSupplementaryCorners">Where two parcels' corners at the same vertex sum to 180° (within collinearToleranceDegrees), label only the larger.</param>
+    /// <param name="skipSquareChamfers">Skip both ends of a chamfer across a square corner (two neighboring corners that both read 135°00'00").</param>
+    /// <param name="rowTerms">';'-separated words that mark a parcel as ROW when found (whole word, any case) in its name or style name. Empty = no ROW parcels.</param>
+    /// <param name="collinearToleranceDegrees">As for Corners.</param>
+    /// <param name="linearTolerance">As for Corners.</param>
+    public static Dictionary<string, object> LabelSiteAngles(
+        object siteOrParcel,
+        double textHeight = 0.08,
+        double offset = 1.0,
+        string layer = "",
+        string textStyle = "",
+        bool skipRightAngles = true,
+        bool skipExteriorCorners = true,
+        bool skipSupplementaryCorners = true,
+        bool skipSquareChamfers = true,
+        string rowTerms = RowParcelMatcher.DefaultTerms,
+        double collinearToleranceDegrees = 1.0 / 3600.0,
+        double linearTolerance = 1e-6)
+    {
+        var objectId = ParcelUnwrapper.ToObjectId(siteOrParcel, "site or parcel");
+        ParcelTopologyReader.SiteTopology site = new ParcelTopologyReader().GetSiteTopology(objectId);
+
+        IReadOnlyList<string> terms = RowParcelMatcher.ParseTerms(rowTerms);
+        var (scaleName, modelTextHeight) = ModelTextHeight(textHeight);
+        var labelOptions = new AngleLabelOptions
+        {
+            TextHeight = modelTextHeight,
+            Offset = offset,
+            SkipRightAngles = skipRightAngles,
+            SkipSquareChamfers = skipSquareChamfers,
+        };
+
+        var runs = site.Parcels.Select(p =>
+        {
+            string? rowMatch = RowParcelMatcher.Match(p.Name, p.StyleName, terms);
+            var (_, results, _) = AnalyzeCorners(p.Loops, collinearToleranceDegrees, linearTolerance);
+
+            AngleLabelPlan plan = rowMatch is not null
+                ? new AngleLabelPlan(
+                    Array.Empty<PlannedAngleLabel>(),
+                    results.SelectMany(l => l.Vertices.Select(v =>
+                        new SkippedVertex(l.LoopIndex, v.VertexIndex, v.Location, $"ROW parcel: {rowMatch}"))).ToList())
+                : AngleLabelPlanner.Plan(results, labelOptions, skipExteriorCorners ? ExteriorElements(p.Loops) : null);
+
+            return (Parcel: p, RowMatch: rowMatch, Results: results, Plan: plan);
+        }).ToList();
+
+        if (skipSupplementaryCorners)
+        {
+            IReadOnlyList<AngleLabelPlan> filtered = SupplementaryLabelFilter.Apply(
+                runs.Select(r => (r.Parcel.Name, r.Plan)).ToList(), linearTolerance, collinearToleranceDegrees);
+            runs = runs.Select((r, i) => r with { Plan = filtered[i] }).ToList();
+        }
+
+        IReadOnlyList<AngleLabelWriter.WriteResult> written = new AngleLabelWriter().WriteAll(
+            runs.Select(r => (r.Parcel.ParcelId, r.Plan.Labels)).ToList(), modelTextHeight, layer, textStyle);
+
+        Dictionary<string, object> output = AngleLabelOutput.SiteToDictionary(
+            site.SiteName,
+            runs.Select((r, i) => (written[i], r.Plan, r.Results, r.Parcel.StyleName, r.RowMatch)).ToList());
+        output["AnnotationScale"] = scaleName;
+        output["ModelTextHeight"] = modelTextHeight;
+        return output;
+    }
+
+    /// <summary>Plotted text height -> model-space height at the drawing's current annotation scale.</summary>
+    private static (string ScaleName, double ModelHeight) ModelTextHeight(double plottedHeight)
+    {
+        if (plottedHeight <= 0)
+            throw new ArgumentOutOfRangeException(nameof(plottedHeight), plottedHeight, "Text height must be positive.");
+        var (name, scale) = AngleLabelWriter.CurrentAnnotationScale();
+        return (name, plottedHeight / scale);
+    }
+
+    /// <summary>Elements referenced by only one parcel in the site: the site's exterior boundary.</summary>
+    private static HashSet<LoopElementRef> ExteriorElements(IList<IList<ParcelSegmentElementData>> loops)
+        => loops.SelectMany(loop => loop)
+            .Where(e => e.ReferenceCount == 1)
+            .Select(e => new LoopElementRef(e.LoopIndex, e.ElementIndex))
+            .ToHashSet();
 
     private static (IList<IList<ParcelSegmentElementData>> Loops, IReadOnlyList<LoopCornerResult> Results, CornerOptions Options)
         AnalyzeCorners(Autodesk.AutoCAD.DatabaseServices.ObjectId objectId, double collinearToleranceDegrees, double linearTolerance)
-    {
-        IList<IList<ParcelSegmentElementData>> loops = new ParcelTopologyReader().GetParcelLoops(objectId);
+        => AnalyzeCorners(new ParcelTopologyReader().GetParcelLoops(objectId), collinearToleranceDegrees, linearTolerance);
 
+    private static (IList<IList<ParcelSegmentElementData>> Loops, IReadOnlyList<LoopCornerResult> Results, CornerOptions Options)
+        AnalyzeCorners(IList<IList<ParcelSegmentElementData>> loops, double collinearToleranceDegrees, double linearTolerance)
+    {
         var options = new CornerOptions
         {
             CollinearToleranceDegrees = collinearToleranceDegrees,
