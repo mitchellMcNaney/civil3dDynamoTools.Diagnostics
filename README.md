@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/34029446/README.md)
 # CivilDynamoTools.Diagnostics
 
 **Civil 3D parcel topology analysis and automated angle annotation for Dynamo**
